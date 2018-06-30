@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
 import pandas as pd
+import torch.nn.functional as F
 import cv2
 import os
 import numpy as np
@@ -9,7 +10,17 @@ from torch.autograd import Variable
 from PIL import Image
 import random
 
+[ 0.82056513,  1.17943487,  1.0036656,   0.9963344,   0.83010581,  1.16989419,
+  0.7701037,   1.2298963,   0.74353448,  1.25646552,  0.53545012,  1.46454988,
+  0.94744745,  1.05255255]
+
+weights = [ 0.41028257, 0.58971743, 0.5018328,  0.4981672,  0.4150529,  0.5849471,  
+  0.38505185,  0.61494815, 0.37176724, 0.62823276, 0.26772506,  0.73227494,
+  0.47372372,  0.52627628]
+
+
 study_type = {'XR_WRIST','XR_SHOULDER','XR_ELBOW','XR_FINGER','XR_FOREARM','XR_HAND','XR_HUMERUS'}
+type2num = {'XR_WRIST':0,'XR_SHOULDER':2,'XR_ELBOW':4,'XR_FINGER':6,'XR_FOREARM':8,'XR_HAND':10,'XR_HUMERUS':12}
 
 class dataset_csv(Dataset):
 
@@ -39,11 +50,93 @@ class dataset_csv(Dataset):
     sample =imgs, img_label, count
     return sample
 
+def _load_model(model,para):
+  total = 0
+  new_para = model.state_dict()
+  
+  for i in new_para:
+    if i in para and 'classifier' not in i:
+      new_para[i] = para[i]
+    else:
+      total += 1
+
+  model.load_state_dict(new_para)
+  if total == 0:
+    print('all parameters loaded')
+  else:
+    print('%d unloaded parameters'%(total))
+  return model
+def clip(pred,min):
+  for i in range(len(pred)):
+    if pred[i] < min:
+      pred[i] = min
+      print('modify happens')
+    if pred[i] > 1 - min:
+      pred[i] = 1 - min
+      print('modify happens')
+  return pred
+   
+def load_and_freeze(net,path):
+  dic = torch.load(path)
+  p = net.state_dict()
+  for i in p:
+    if not i in dic:
+      dic[i] = p[i]
+  net.load_state_dict(dic)
+  for i,j in net.named_parameters():
+    if not 'attention' in i:
+      j.requires_grad = False
+  return net
+
+class Focal_Loss(torch.nn.modules.Module):
+    def __init__(self):
+        super(Focal_Loss, self).__init__()
+        
+    def forward(self, inputs, targets):
+      
+        targets = targets.float()
+        inputs = inputs.select(1,0)
+        loss = - (((1 - inputs) ** (1/2)) * targets * inputs.log() + (inputs ** (1/2)) * (1 - targets) * (1 - inputs).log())
+        return loss
+
+
+class per_class_dataset(Dataset):
+
+  def __init__(self, root_dir, csv_file, transform=None, RGB=False):
+    csv_file_path = root_dir + csv_file
+    self.csv_list = pd.read_csv(csv_file_path)
+    self.root_dir = root_dir
+    self.transform = transform
+    self.RGB = RGB
+
+  def __len__(self):
+    return len(self.csv_list)
+
+  def __getitem__(self, idx):
+    class_type = self.csv_list.iloc[idx][0]
+    class_type = class_type.split('/')[2]
+    img_name = self.root_dir+'/'+self.csv_list.iloc[idx][0]
+    img = Image.open(img_name)
+    if self.RGB==False:
+      img = img.convert('L')
+    else: 
+      img = img.convert('RGB')
+    img_label = self.csv_list.iloc[idx,1]
+    weight = weights[type2num[class_type]+img_label]
+      
+
+    if self.transform:
+      img = self.transform(img)
+
+    sample = img, img_label, weight
+    return sample
+
+
 
 class MURAdataset(Dataset):
 
   def __init__(self, root_dir, csv_file, transform=None):
-    csv_file_path = root_dir + csv_file
+    csv_file_path = root_dir + '/' + csv_file
     self.csv_list = pd.read_csv(csv_file_path)
     self.root_dir = root_dir
     self.transform = transform
@@ -52,7 +145,8 @@ class MURAdataset(Dataset):
     return len(self.csv_list)
 
   def __getitem__(self, idx):
-    img_name = self.root_dir+'/'+self.csv_list.iloc[idx,0]
+    
+    img_name = self.root_dir+'/'+self.csv_list.iloc[idx][0]
     img = Image.open(img_name)
     img = img.convert('L')
     img_label = self.csv_list.iloc[idx,1]
@@ -62,6 +156,7 @@ class MURAdataset(Dataset):
 
     sample = img, img_label
     return sample
+
 
 class Imagedataset(Dataset):
 
@@ -94,47 +189,98 @@ def imagepadding(img):
   img = cv2.copyMakeBorder(img,top,bottom,left,right,cv2.BORDER_CONSTANT,0)
   return img
 
-def model_modify(net):
+def model_modify(net,channels1,channels2,Sigmoid=False):
   conv0 = net.features[0]
   tensor = conv0.weight
   tensor = torch.chunk(tensor,3,1)
   tensor = tensor[0]
-  newconv = torch.nn.Conv2d(1,64,7,2,3)
+  newconv = torch.nn.Conv2d(1,channels1,7,2,3)
   newconv.weight = nn.Parameter(tensor)
   net.features[0] = newconv
-  net.classifier = nn.Linear(1664, 2)
+  if Sigmoid == False:
+    net.classifier = nn.Linear(channels2, 2)#1920 for 201
+  else:
+    net.classifier = nn.Linear(channels2, 1)
   return net
 
 def test(model,testloader):
   correct = 0
   total = 0
+  total_loss = 0
   for data in testloader:
       images, labels = data
-      outputs = model(Variable(images.cuda())) 
+      images, labels = images.cuda(), labels.cuda()
+      outputs = model(images) 
+      total_loss += float(F.cross_entropy(outputs,labels))
       _, predicted = torch.max(outputs.data, 1)
       total += labels.cuda().size(0)
       correct += (predicted == labels.cuda()).sum()
 
-  return (100 * correct / total)
+  return (100 * correct / total), total_loss
 
-def test_study(model,testloader):
+def sigmoid_test(model,testloader):
   correct = 0
   total = 0
+  total_loss = 0
   for data in testloader:
-    images, labels, count = data
-    labels = labels.data.cuda()
-    images = images[0]
-    outputs = model(Variable(images.cuda()))
-    outputs = torch.sum(outputs,0)
-    _,predicted = torch.max(outputs,0)
-    labels = labels.type(torch.cuda.LongTensor)
-    if predicted == labels:
-      correct += count
-    total += count
-  correct = correct.numpy()
-  total = total.numpy()
-  result = correct[0] / total[0]
-  return 100 * result, total[0]
+    images, labels, weights = data
+    images = images.cuda()
+    labels = labels.cuda()
+    weights = weights.cuda().float()
+    outputs = torch.sigmoid(model(images))
+    outputs = outputs.select(1,0)
+    outputs = torch.clamp(outputs,min=1e-7,max=1-1e-7)
+    loss =-(labels.float() * outputs.log() + (1-labels.float()) * (1 - outputs).log())
+    loss = (loss * weights).sum()
+    total_loss += float(loss)
+    predicted = (outputs >= 0.5).type(torch.cuda.LongTensor)
+  
+    total += labels.size(0)
+    correct += (predicted == labels).sum()
+   
+    
+  return (100.0 * float(correct) / float(total)), total_loss/total
+
+def test_study(model,testloader,Sigmoid=False):
+  if Sigmoid == False:
+    correct = 0
+    total = 0
+    for data in testloader:
+      images, labels, count = data
+      labels = labels.data.cuda()
+      images = images[0]
+      outputs = model(Variable(images.cuda()))
+      outputs = torch.sum(outputs,0)
+      _,predicted = torch.max(outputs,0)
+      labels = labels.type(torch.cuda.LongTensor)
+      if predicted == labels:
+        correct += count
+      total += count
+    correct = correct.numpy()
+    total = total.numpy()
+    result = correct[0] / total[0]
+    return 100 * result, total[0]
+  else:
+    correct = 0
+    total = 0
+    for data in testloader:
+      images, labels, count = data
+      labels = labels.data.cuda()
+      images = images[0]
+      outputs = torch.sigmoid(model(Variable(images.cuda())))
+      div = count.cuda()
+      div = div.type(torch.cuda.FloatTensor)
+      outputs = outputs.select(1,0).sum()/div
+      predicted = (outputs > 0.5)
+      labels = labels.type(torch.cuda.ByteTensor)
+      if predicted == labels:
+        correct += count
+      total += count
+    correct = correct.numpy()
+    total = total.numpy()
+    result = correct[0] / total[0]
+    return 100 * result, total[0]
+
 
 
 def model_modify3(net):
@@ -208,4 +354,3 @@ def get_stacked_img(path ,count):
   res_img = np.concatenate(imgs,2)
   res_img = Image.fromarray(np.uint8(res_img))
   return res_img
-         
