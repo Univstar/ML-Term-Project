@@ -32,6 +32,7 @@ def parse_args():
     parser.add_argument('--load_path', type=str)
     parser.add_argument('--net_name', type=str)
     parser.add_argument('--save_path', type=str)
+    parser.add_argument('--loss_type', type=str, default="logloss")
     return parser.parse_args()
 
 
@@ -57,6 +58,7 @@ if __name__ == '__main__':
     if os.path.exists(save_path) == False:
         os.makedirs(save_path)
     save_path += net_name + '.pkl'
+    loss_type = args.loss_type
 
     train_transform = transforms.Compose([transforms.Resize([320, 320]),
                                           transforms.CenterCrop(224),
@@ -82,9 +84,9 @@ if __name__ == '__main__':
     testloader = torch.utils.data.DataLoader(testset, batch_size=batch_size,
                                              shuffle=False, num_workers=1)
 
-    net = torchvision.models.densenet169(pretrained=not load_model)
-    net.classifier = nn.Linear(1664, 1)
-    # net = model_modify(net,64,1664,Sigmoid=True)
+    net = torchvision.models.densenet201(pretrained=not load_model)
+    net.classifier = nn.Linear(1920, 1)
+
     optimizer = torch.optim.Adam(net.parameters(), lr=learning_rate)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', patience=20, verbose=True)
 
@@ -129,7 +131,10 @@ if __name__ == '__main__':
             outputs = torch.sigmoid(net(inputs))
             outputs = outputs.select(1, 0)
             outputs = torch.clamp(outputs, min=1e-7, max=1 - 1e-7)
-            loss = -(labels * outputs.log() + (1 - labels) * (1 - outputs).log())
+            if loss_type == "focalloss":
+                loss = -((1 - outputs) * labels * outputs.log() + outputs * (1 - labels) * (1 - outputs).log())
+            if loss_type == "logloss":
+                loss = -(labels * outputs.log() + (1 - labels) * (1 - outputs).log())
 
             loss = (loss * weights).sum()
             # loss = loss.sum()
@@ -148,9 +153,10 @@ if __name__ == '__main__':
             # scheduler.step(test_loss)
             print('test_score, test_accuracy and loss in epoch %d : %.3f %.3f %.3f [%3.fs]' % (
                 step, test_score, test_acc, test_loss, time.time() - t0))
+            # print('epoch_loss in epoch %d : %.3f' % (step, epoch_loss / total))
             sys.stdout.flush()
             if test_score > best_score:
-                print ("model saved!")
+                print("model saved!")
                 best_score = test_score
                 torch.save(net.state_dict(), save_path)
 

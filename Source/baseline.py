@@ -35,9 +35,9 @@ def parse_args():
     return parser.parse_args()
 
 
-# def model_modify(net, channels1, channels2):
-#     net.classifier = nn.Linear(channels2, 1)
-#     return net
+def model_modify(net):
+    net.classifier = nn.Linear(26624, 1)
+    return net
 
 
 if __name__ == '__main__':
@@ -81,8 +81,8 @@ if __name__ == '__main__':
                                              shuffle=False, num_workers=1)
 
     net = torchvision.models.densenet169(pretrained=not load_model)
-    net.classifier = nn.Linear(1664, 1)
-    # net = model_modify(net,64,1664,Sigmoid=True)
+    net = model_modify(net)
+
     optimizer = torch.optim.Adam(net.parameters(), lr=learning_rate)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', patience=20, verbose=True)
 
@@ -102,6 +102,7 @@ if __name__ == '__main__':
 
     for step in range(epoch):
         print ("epoch %d" % step)
+        t0 = time.time()
         epoch_loss = 0.0
         running_loss = 0.0
         total = 0
@@ -119,7 +120,7 @@ if __name__ == '__main__':
             outputs = torch.sigmoid(net(inputs))
             outputs = outputs.select(1, 0)
             outputs = torch.clamp(outputs, min=1e-7, max=1 - 1e-7)
-            loss = -((1 - outputs) * labels * outputs.log() + outputs * (1 - labels) * (1 - outputs).log())
+            loss = -(labels * outputs.log() + (1 - labels) * (1 - outputs).log())
 
             loss = (loss * weights).sum()
             # loss = loss.sum()
@@ -136,11 +137,11 @@ if __name__ == '__main__':
             net.eval()
             test_score, test_acc, test_loss = sigmoid_test(net, testloader)
             # scheduler.step(test_loss)
-            print('test_score, test_accuracy and loss in epoch %d : %.3f %.3f %.3f' % (
-            step, test_score, test_acc, test_loss))
-            # print('epoch_loss in epoch %d : %.3f' % (step, epoch_loss / total))
+            print('test_score, test_accuracy and loss in epoch %d : %.3f %.3f %.3f [%3.fs]' % (
+                step, test_score, test_acc, test_loss, time.time() - t0))
             sys.stdout.flush()
             if test_score > best_score:
+                print ("model saved!")
                 best_score = test_score
                 torch.save(net.state_dict(), save_path)
 
