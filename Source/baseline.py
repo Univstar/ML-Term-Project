@@ -35,9 +35,9 @@ def parse_args():
     return parser.parse_args()
 
 
-# def model_modify(net, channels1, channels2):
-#     net.classifier = nn.Linear(channels2, 1)
-#     return net
+def model_modify(net):
+    net.classifier = nn.Linear(26624, 1)
+    return net
 
 
 if __name__ == '__main__':
@@ -59,14 +59,12 @@ if __name__ == '__main__':
     save_path += net_name + '.pkl'
 
     train_transform = transforms.Compose([transforms.Resize([320, 320]),
-                                          transforms.CenterCrop(224),
                                           transforms.RandomHorizontalFlip(),
                                           transforms.RandomRotation(30),
                                           transforms.ToTensor(),
                                           transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
                                           ])
     test_transform = transforms.Compose([transforms.Resize((320, 320)),
-                                         transforms.CenterCrop(224),
                                          transforms.ToTensor(),
                                          transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
                                          ])
@@ -83,8 +81,8 @@ if __name__ == '__main__':
                                              shuffle=False, num_workers=1)
 
     net = torchvision.models.densenet169(pretrained=not load_model)
-    net.classifier = nn.Linear(1664, 1)
-    # net = model_modify(net,64,1664,Sigmoid=True)
+    net = model_modify(net)
+
     optimizer = torch.optim.Adam(net.parameters(), lr=learning_rate)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', patience=20, verbose=True)
 
@@ -95,17 +93,10 @@ if __name__ == '__main__':
     if torch.cuda.is_available():
         net = net.cuda()
 
-    # for k, v in net.state_dict().iteritems():
-    #     print("Layer {}".format(k))
-    #     print(v)
-
     if load_model:
         print("load from %s" % load_path)
         net.load_state_dict(torch.load(load_path))
 
-    # for k, v in net.state_dict().iteritems():
-    #     print("Layer {}".format(k))
-    #     print(v)
 
     best_score = 0
 
