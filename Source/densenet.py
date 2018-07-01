@@ -43,7 +43,7 @@ def parse_args():
 if __name__ == '__main__':
     args = parse_args()
     for k, v in vars(args).items():
-        print k, ":", v
+        print(k, v)
 
     batch_size = args.batch_size
     epoch = args.epoch
@@ -88,21 +88,29 @@ if __name__ == '__main__':
     optimizer = torch.optim.Adam(net.parameters(), lr=learning_rate)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', patience=20, verbose=True)
 
-    '''if torch.cuda.device_count() > 1:
-      print("Let's use GPUS!")
-       net = nn.DataParallel(net,device_ids=[0,2,3,4,5])
-    '''
-
-    if load_model:
-        print ("load from %s" % load_path)
-        net.load_state_dict(torch.load(load_path))
+    if torch.cuda.device_count() > 1:
+        print("Let's use GPUS!")
+        net = nn.DataParallel(net)
 
     if torch.cuda.is_available():
         net = net.cuda()
 
+    # for k, v in net.state_dict().iteritems():
+    #     print("Layer {}".format(k))
+    #     print(v)
+
+    if load_model:
+        print("load from %s" % load_path)
+        net.load_state_dict(torch.load(load_path))
+
+    # for k, v in net.state_dict().iteritems():
+    #     print("Layer {}".format(k))
+    #     print(v)
+
     best_score = 0
 
     for step in range(epoch):
+        print ("epoch %d" % step)
         epoch_loss = 0.0
         running_loss = 0.0
         total = 0
@@ -137,20 +145,19 @@ if __name__ == '__main__':
             net.eval()
             test_score, test_acc, test_loss = sigmoid_test(net, testloader)
             # scheduler.step(test_loss)
-            print('test_score, test_accuracy and loss in epoch %d : %.3f %.3f %.3f' % (step, test_score, test_acc, test_loss))
+            print('test_score, test_accuracy and loss in epoch %d : %.3f %.3f %.3f' % (
+            step, test_score, test_acc, test_loss))
             # print('epoch_loss in epoch %d : %.3f' % (step, epoch_loss / total))
             sys.stdout.flush()
             if test_score > best_score:
                 best_score = test_score
-                torch.save(net, save_path)
+                torch.save(net.state_dict(), save_path)
 
     print('Finished training and start to test')
     if best_score > 0:
-        print ("load from best score model")
-        net = _load_model(net, torch.load(save_path))
+        print("load from best score model")
+        net.load_state_dict(torch.load(save_path))
     net.eval()
-    # test_score, test_acc, test_loss = sigmoid_test(net, testloader)
-    test_score = 0
-    test_acc, test_loss = sigmoid_test(net, testloader)
+    test_score, test_acc, test_loss = sigmoid_test(net, testloader)
     print('final test_score, test_accuracy and loss: %.3f %.3f %.3f' % (test_score, test_acc, test_loss))
     print('Finished saving')

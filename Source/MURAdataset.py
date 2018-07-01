@@ -222,41 +222,9 @@ def test(model, testloader):
     return (100.0 * correct / total), total_loss
 
 
-# def sigmoid_test(model, testloader):
-#     correct = 0
-#     tot_label, tot_predict = np.array([]), np.array([])
-#     total = 0
-#     total_loss = 0
-#     for data in testloader:
-#         images, labels, weights = data
-#         images = images.cuda()
-#         labels = labels.cuda()
-#         weights = weights.cuda().float()
-#         outputs = torch.sigmoid(model(images))
-#         outputs = outputs.select(1, 0)
-#         outputs = torch.clamp(outputs, min=1e-7, max=1 - 1e-7)
-#         loss = -(labels.float() * outputs.log() + (1 - labels.float()) * (1 - outputs).log())
-#         loss = (loss * weights).sum()
-#         total_loss += float(loss)
-#
-#         predicted = (outputs >= 0.5).type(torch.cuda.LongTensor)
-#
-#         tot_label = np.append(tot_label, labels.cpu().numpy())
-#         tot_predict = np.append(tot_predict, outputs.cpu().detach().numpy())
-#         # tot_label = torch.cat((tot_label, labels))
-#         # tot_predict = torch.cat((tot_predict, outputs))
-#
-#         total += labels.size(0)
-#         correct += (predicted == labels).sum()
-#
-#     correct = correct.item()
-#     score = metrics.roc_auc_score(tot_label, tot_predict)
-#
-#     return score, 100.0 * correct / total, total_loss / total
-
-
 def sigmoid_test(model, testloader):
     correct = 0
+    tot_label, tot_predict = np.array([]), np.array([])
     total = 0
     total_loss = 0
     for data in testloader:
@@ -270,12 +238,42 @@ def sigmoid_test(model, testloader):
         loss = -(labels.float() * outputs.log() + (1 - labels.float()) * (1 - outputs).log())
         loss = (loss * weights).sum()
         total_loss += float(loss)
+
         predicted = (outputs >= 0.5).type(torch.cuda.LongTensor)
+
+        tot_label = np.append(tot_label, labels.cpu().numpy())
+        tot_predict = np.append(tot_predict, outputs.cpu().detach().numpy())
 
         total += labels.size(0)
         correct += (predicted == labels).sum()
 
-    return (100.0 * float(correct) / float(total)), total_loss / total
+    correct = correct.item()
+    score = metrics.roc_auc_score(tot_label, tot_predict)
+
+    return score, 100.0 * correct / total, total_loss / total
+
+
+# def sigmoid_test(model, testloader):
+#     correct = 0
+#     total = 0
+#     total_loss = 0
+#     for data in testloader:
+#         images, labels, weights = data
+#         images = images.cuda()
+#         labels = labels.cuda()
+#         weights = weights.cuda().float()
+#         outputs = torch.sigmoid(model(images))
+#         outputs = outputs.select(1, 0)
+#         outputs = torch.clamp(outputs, min=1e-7, max=1 - 1e-7)
+#         loss = -(labels.float() * outputs.log() + (1 - labels.float()) * (1 - outputs).log())
+#         loss = (loss * weights).sum()
+#         total_loss += float(loss)
+#         predicted = (outputs >= 0.5).type(torch.cuda.LongTensor)
+#
+#         total += labels.size(0)
+#         correct += (predicted == labels).sum()
+#
+#     return (100.0 * float(correct) / float(total)), total_loss / total
 
 def test_study(model, testloader, Sigmoid=False):
     if Sigmoid == False:
