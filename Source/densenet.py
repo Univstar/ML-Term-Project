@@ -75,6 +75,10 @@ if __name__ == '__main__':
 
     trainset = per_class_dataset(csv_file=r'/train.csv', root_dir=present_dir_path,
                                  transform=train_transform, RGB=True)
+    # print ("trainset 0")
+    # print (trainset[0])
+    # print ("trainset 1")
+    # print (trainset[1])
     trainloader = torch.utils.data.DataLoader(trainset, batch_size=batch_size,
                                               shuffle=True, num_workers=4)
     testset = per_class_dataset(csv_file='/valid.csv', root_dir=present_dir_path,
