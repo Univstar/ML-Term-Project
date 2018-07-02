@@ -32,12 +32,13 @@ def parse_args():
     parser.add_argument('--load_path', type=str)
     parser.add_argument('--net_name', type=str)
     parser.add_argument('--save_path', type=str)
+    parser.add_argument('--loss_type', type=str, default="logloss")
     return parser.parse_args()
 
 
-def model_modify(net):
-    net.classifier = nn.Linear(26624, 1)
-    return net
+# def model_modify(net, channels1, channels2):
+#     net.classifier = nn.Linear(channels2, 1)
+#     return net
 
 train_transform = transforms.Compose([transforms.Resize([320, 320]),
                                       transforms.RandomHorizontalFlip(),
@@ -67,7 +68,7 @@ if __name__ == '__main__':
     if os.path.exists(save_path) == False:
         os.makedirs(save_path)
     save_path += net_name + '.pkl'
-
+    loss_type = args.loss_type
 
     present_dir_path = os.getcwd()
 
@@ -80,8 +81,8 @@ if __name__ == '__main__':
     testloader = torch.utils.data.DataLoader(testset, batch_size=batch_size,
                                              shuffle=False, num_workers=1)
 
-    net = torchvision.models.densenet169(pretrained=not load_model)
-    net = model_modify(net)
+    net = torchvision.models.densenet161(pretrained=not load_model)
+    net.classifier = nn.Linear(35328, 1)
 
     optimizer = torch.optim.Adam(net.parameters(), lr=learning_rate)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', patience=20, verbose=True)
@@ -93,10 +94,17 @@ if __name__ == '__main__':
     if torch.cuda.is_available():
         net = net.cuda()
 
+    # for k, v in net.state_dict().iteritems():
+    #     print("Layer {}".format(k))
+    #     print(v)
+
     if load_model:
         print("load from %s" % load_path)
         net.load_state_dict(torch.load(load_path))
 
+    # for k, v in net.state_dict().iteritems():
+    #     print("Layer {}".format(k))
+    #     print(v)
 
     best_score = 0
 
@@ -120,7 +128,10 @@ if __name__ == '__main__':
             outputs = torch.sigmoid(net(inputs))
             outputs = outputs.select(1, 0)
             outputs = torch.clamp(outputs, min=1e-7, max=1 - 1e-7)
-            loss = -(labels * outputs.log() + (1 - labels) * (1 - outputs).log())
+            if loss_type == "focalloss":
+                loss = -((1 - outputs) * labels * outputs.log() + outputs * (1 - labels) * (1 - outputs).log())
+            if loss_type == "logloss":
+                loss = -(labels * outputs.log() + (1 - labels) * (1 - outputs).log())
 
             loss = (loss * weights).sum()
             # loss = loss.sum()
@@ -139,9 +150,10 @@ if __name__ == '__main__':
             # scheduler.step(test_loss)
             print('test_score, test_accuracy and loss in epoch %d : %.3f %.3f %.3f [%3.fs]' % (
                 step, test_score, test_acc, test_loss, time.time() - t0))
+            # print('epoch_loss in epoch %d : %.3f' % (step, epoch_loss / total))
             sys.stdout.flush()
             if test_score > best_score:
-                print ("model saved!")
+                print("model saved!")
                 best_score = test_score
                 torch.save(net.state_dict(), save_path)
 
