@@ -40,6 +40,18 @@ def parse_args():
 #     net.classifier = nn.Linear(channels2, 1)
 #     return net
 
+train_transform = transforms.Compose([transforms.Resize([320, 320]),
+                                      transforms.CenterCrop(224),
+                                      transforms.RandomHorizontalFlip(),
+                                      transforms.RandomRotation(30),
+                                      transforms.ToTensor(),
+                                      transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+                                      ])
+test_transform = transforms.Compose([transforms.Resize((320, 320)),
+                                     transforms.CenterCrop(224),
+                                     transforms.ToTensor(),
+                                     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+                                     ])
 
 if __name__ == '__main__':
     args = parse_args()
@@ -59,19 +71,6 @@ if __name__ == '__main__':
         os.makedirs(save_path)
     save_path += net_name + '.pkl'
     loss_type = args.loss_type
-
-    train_transform = transforms.Compose([transforms.Resize([320, 320]),
-                                          transforms.CenterCrop(224),
-                                          transforms.RandomHorizontalFlip(),
-                                          transforms.RandomRotation(30),
-                                          transforms.ToTensor(),
-                                          transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-                                          ])
-    test_transform = transforms.Compose([transforms.Resize((320, 320)),
-                                         transforms.CenterCrop(224),
-                                         transforms.ToTensor(),
-                                         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-                                         ])
 
     present_dir_path = os.getcwd()
 

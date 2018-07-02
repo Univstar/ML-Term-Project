@@ -6,10 +6,34 @@ import torch
 import torchvision
 import torchvision.transforms as transforms
 import torch.optim as optim
-from MURAdataset import dataset_csv, test_study, get_study_level_data, per_class_dataset, sigmoid_test
+from MURAdataset import dataset_csv, test_study, get_study_level_data, per_class_dataset
 import os
 import sys
 import numpy as np
+import densenet201 as densenet
+
+def sigmoid_test(model, testloader):
+    correct = 0
+    total = 0
+    total_loss = 0
+    for data in testloader:
+        images, labels, weights = data
+        images = images.cuda()
+        labels = labels.cuda()
+        weights = weights.cuda().float()
+        outputs = torch.sigmoid(model(images))
+        outputs = outputs.select(1, 0)
+        outputs = torch.clamp(outputs, min=1e-7, max=1 - 1e-7)
+        loss = -(labels.float() * outputs.log() + (1 - labels.float()) * (1 - outputs).log())
+        loss = (loss * weights).sum()
+        total_loss += float(loss)
+        predicted = (outputs >= 0.5).type(torch.cuda.LongTensor)
+
+        total += labels.size(0)
+        correct += (predicted == labels).sum()
+
+    return (100.0 * float(correct) / float(total)), total_loss / total
+
 
 study_type = ['XR_WRIST', 'XR_SHOULDER', 'XR_ELBOW', 'XR_FINGER', 'XR_FOREARM', 'XR_HAND', 'XR_HUMERUS']
 pn = ['positive', 'negative']
@@ -24,18 +48,16 @@ for i in study_type:
     testloader[i] = {}
 
 # to be modifed when testing on different model
-load_path = './save/densenet169/mura3crop_1_loss.pkl'
+load_path = './save/densenet169/b8_lr1e-4_d0_logloss.pkl'
 root_dir = os.getcwd()
-net = torchvision.models.densenet169(pretrained=False)
-net.classifier = nn.Linear(1664, 1)
+net = torchvision.models.densenet201(pretrained=False)
+net.classifier = nn.Linear(1920, 1)
 total = 0
 result = 0.0
 
-test_transform = transforms.Compose([transforms.Resize([320, 320]),
-                                     transforms.CenterCrop(224),
-                                     transforms.ToTensor(),
-                                     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-                                     ])
+test_transform = densenet.test_transform
+print (test_transform)
+
 for i in study_type:
     for j in pn:
         testset[i][j] = per_class_dataset(root_dir, '/traincsv/%s_%s.csv' % (i, j), transform=test_transform, RGB=True)

@@ -32,13 +32,25 @@ def parse_args():
     parser.add_argument('--load_path', type=str)
     parser.add_argument('--net_name', type=str)
     parser.add_argument('--save_path', type=str)
+    parser.add_argument('--loss_type', type=str, default="logloss")
     return parser.parse_args()
 
 
 # def model_modify(net, channels1, channels2):
 #     net.classifier = nn.Linear(channels2, 1)
 #     return net
-
+train_transform = transforms.Compose([transforms.Resize([320, 320]),
+                                      transforms.CenterCrop(224),
+                                      transforms.RandomHorizontalFlip(),
+                                      transforms.RandomRotation(30),
+                                      transforms.ToTensor(),
+                                      transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+                                      ])
+test_transform = transforms.Compose([transforms.Resize((320, 320)),
+                                     transforms.CenterCrop(224),
+                                     transforms.ToTensor(),
+                                     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+                                     ])
 
 if __name__ == '__main__':
     args = parse_args()
@@ -57,19 +69,7 @@ if __name__ == '__main__':
     if os.path.exists(save_path) == False:
         os.makedirs(save_path)
     save_path += net_name + '.pkl'
-
-    train_transform = transforms.Compose([transforms.Resize([320, 320]),
-                                          transforms.CenterCrop(224),
-                                          transforms.RandomHorizontalFlip(),
-                                          transforms.RandomRotation(30),
-                                          transforms.ToTensor(),
-                                          transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-                                          ])
-    test_transform = transforms.Compose([transforms.Resize((320, 320)),
-                                         transforms.CenterCrop(224),
-                                         transforms.ToTensor(),
-                                         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-                                         ])
+    loss_type = args.loss_type
 
     present_dir_path = os.getcwd()
 
@@ -133,7 +133,10 @@ if __name__ == '__main__':
             outputs = torch.sigmoid(net(inputs))
             outputs = outputs.select(1, 0)
             outputs = torch.clamp(outputs, min=1e-7, max=1 - 1e-7)
-            loss = -(labels * outputs.log() + (1 - labels) * (1 - outputs).log())
+            if loss_type == "focalloss":
+                loss = -((1 - outputs) * labels * outputs.log() + outputs * (1 - labels) * (1 - outputs).log())
+            if loss_type == "logloss":
+                loss = -(labels * outputs.log() + (1 - labels) * (1 - outputs).log())
 
             loss = (loss * weights).sum()
             # loss = loss.sum()
