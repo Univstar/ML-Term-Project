@@ -248,6 +248,8 @@ def sigmoid_test(model, testloader):
         correct += (predicted == labels).sum()
 
     correct = correct.item()
+    # print (tot_label)
+    # print (tot_predict)
     score = metrics.roc_auc_score(tot_label, tot_predict)
 
     return score, 100.0 * correct / total, total_loss / total
