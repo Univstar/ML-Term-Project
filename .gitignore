@@ -2,3 +2,12 @@
 .idea/
 *.sh
 *.ps1
+*.aux
+*.bbl
+*.blg
+*.fdb_latexmk
+*.fls
+*.log
+*.out
+*.xdv
+*.synctex.gz

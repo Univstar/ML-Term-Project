@@ -36,6 +36,30 @@ In order to develop an effective and available algorithm, we has trained several
 
 \subsection{Model Training}
 
+For each image input, we resized it to a uniform size. Because input images differ in specification, we have done center crop, random horizontal flip and random rotation. Firstly, we tried to train an 161-layer, an 169-layer and a 201-layer DenseNet\cite{Huang2017Densely} respectively.
+
+We noticed that many images have been labeled to mark ordinal or position, which were very bright in the heat map (see section~2.2). We believed thar they have nothing to do with our problem, so we also tried to remove watermark in the processing.
+
+Based on intuitive guesswork, we thought that training the difficult data first can improve the quality of the model. We selected 8000 images with the lowest loss in a previous model and trained them before training the whole dataset.
+
+Lastly, we binded several models together. The results of all the above models are listed in the table below.
+
+\begin{table}[!ht]
+\centering
+\begin{tabular}{|c|c|c|c|c|}
+\hline
+\textbf{ID} & \textbf{Network} & \textbf{Description} & \textbf{Loss Function} & \textbf{Accuracy}\\
+\hline
+1 & DenseNet-161 & & log loss & \\ 
+\hline
+2 & DenseNet-169 & & log loss & \\ 
+\hline
+3 & DenseNet-201 & & log loss & \\ 
+\hline
+\end{tabular}
+\caption{Comparison of different models}
+\end{table}
+
 \subsection{Explanatory Analysis}
 
 \subsection{Image Retrieval}
